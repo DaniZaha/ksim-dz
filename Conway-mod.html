@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Conway's Game of Life</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+    }
+    .table_component {
+    overflow: auto;
+    width: 100%;
+}
+
+.table_component table {
+    border: 1px solid #dededf;
+    height: 100%;
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    border-spacing: 1px;
+    text-align: left;
+}
+
+.table_component caption {
+    caption-side: top;
+    text-align: left;
+}
+
+.table_component th {
+    border: 1px solid #dededf;
+    background-color: #eceff1;
+    color: #000000;
+    padding: 5px;
+}
+
+.table_component td {
+    border: 1px solid #dededf;
+    background-color: #ffffff;
+    color: #000000;
+    padding: 5px;
+}
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="500" height="500"></canvas>
+  <button onclick="startGame()">Start</button>
+  <button onclick="pauseGame()">Pause</button>
+  <button onclick="iterateOnce()">Iterate Once</button>
+  <button onclick="clearGrid()">Clear</button>
+  <button onclick="getherStats()">Get Stats</button>
+  <br>
+  <div class="table_component" role="region" tabindex="0">
+ <table>
+    <thead>
+        <tr>
+            <th>Stat</th>
+            <th>Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Living Cells</td>
+            <td id='living'></td>
+        </tr>
+        <tr>
+            <td>Dead Cells</td>
+            <td id='dead'></td>
+        </tr>
+        <tr>
+            <td>Food</td>
+            <td id='food'></td>
+        </tr>
+        <tr>
+            <td>Average heath</td>
+            <td id='avg_health'></td>
+        </tr>
+    </tbody>
+</table>
+<div style="margin-top:8px">
+  <script>
+    const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
+
+    class Cell {
+      constructor(x, y, alive, health) {
+        this.x = x;
+        this.y = y;
+        this.alive = alive;
+        this.health = health;
+        this.nextState = false;
+      }
+      
+      draw(ctx, cellSize) {
+        ctx.fillStyle = this.alive ? 'black' : 'white';
+        ctx.fillRect(this.x * cellSize, this.y * cellSize, cellSize, cellSize);
+        ctx.strokeRect(this.x * cellSize, this.y * cellSize, cellSize, cellSize);
+      }
+    }
+    
+    class FoodCell {
+      constructor(x, y, alive, amount) {
+        this.x = x;
+        this.y = y;
+        this.alive = alive;
+        this.amount = amount;
+        this.nextState = false;
+      }
+
+      draw(ctx, cellSize) {
+        ctx.fillStyle = this.alive ? 'green' : 'white';
+        ctx.fillRect(this.x * cellSize, this.y * cellSize, cellSize, cellSize);
+        ctx.strokeRect(this.x * cellSize, this.y * cellSize, cellSize, cellSize);
+      }
+    }
+    
+    class GameOfLife {
+      constructor(width, height, cellSize) {
+        this.width = width;
+        this.height = height;
+        this.cellSize = cellSize;
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.grid = this.createGrid();
+        this.setupGrid();
+      }
+      
+      createGrid() {
+        let grid = [];
+        for (let y = 0; y < this.height; y++) {
+          grid[y] = [];
+          for (let x = 0; x < this.width; x++) {
+            let random = Math.random() > 0.9
+            grid[y][x] = new Cell(x, y, random, 10 * random);
+            if (Math.random() > 0.9) {
+              grid[y][x] = new FoodCell(x, y, 1, 10);
+            }
+          }
+        }
+        return grid;
+      }
+      
+      setupGrid() {
+        this.canvas.addEventListener('mousedown', event => {
+          const rect = this.canvas.getBoundingClientRect();
+          const mouseX = event.clientX - rect.left;
+          const mouseY = event.clientY - rect.top;
+          const cellX = Math.floor(mouseX / this.cellSize);
+          const cellY = Math.floor(mouseY / this.cellSize);
+          if (event.button == 0) { // left click for mouse
+              this.grid[cellY][cellX] = new Cell(cellX,cellY, !this.grid[cellY][cellX].alive, 10)
+              this.draw();
+          } else if (event.button == 2){   // right click for mouse
+              this.grid[cellY][cellX] = new FoodCell(cellX,cellY, !this.grid[cellY][cellX].alive, 10)
+              this.draw();
+          }});
+      }
+
+      countNeighbors(x, y) {
+        let count = 0;
+        for (let i = -1; i <= 1; i++) {
+          for (let j = -1; j <= 1; j++) {
+            if (i === 0 && j === 0) continue;
+            const checkX = x + i;
+            const checkY = y + j;
+            
+            if (checkX >= 0 && checkX < this.width && checkY >= 0 && checkY < this.height) {
+              if (this.grid[checkY][checkX].alive && this.grid[checkY][checkX] instanceof Cell) {
+                count++;
+              }
+            }
+          }
+        }
+        return count;
+      }
+
+      countFood(x, y) {
+        let count = 0;
+        for (let i = -1; i <= 1; i++) {
+          for (let j = -1; j <= 1; j++) {
+            if (i === 0 && j === 0) continue;
+            const checkX = x + i;
+            const checkY = y + j;
+            
+            if (checkX >= 0 && checkX < this.width && checkY >= 0 && checkY < this.height) {
+              if (this.grid[checkY][checkX].alive && this.grid[checkY][checkX] instanceof FoodCell) {
+                count++;
+              }
+            }
+          }
+        }
+        return count;
+      }
+      
+      update() {
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            const neighbors = this.countNeighbors(x, y);
+            const foods = this.countFood(x, y);
+            const cell = this.grid[y][x];
+            // console.log(foods)
+            
+            if (cell instanceof Cell) {
+              if (cell.alive) {
+                cell.health = clamp((cell.health - 1 + foods), 0, 10)
+              }
+              if (cell.alive && (neighbors < 2 || neighbors > 3)) {
+                cell.nextState = false || (cell.health > 0);
+              } else if (!cell.alive && neighbors === 3) {
+                cell.nextState = true;
+              } else {
+                cell.nextState = cell.alive;
+              }
+            } else {
+              cell.amount = clamp((cell.amount - neighbors), 0, 10)
+              cell.nextState = cell.amount > 0
+            }
+            
+          }
+        }
+        
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            this.grid[y][x].alive = this.grid[y][x].nextState;
+          }
+        }
+      }
+      
+      draw() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        for (let y = 0; y < this.height; y++) {
+          for (let x = 0; x < this.width; x++) {
+            this.grid[y][x].draw(this.ctx, this.cellSize);
+          }
+        }
+      }
+      
+      start() {
+        setInterval(() => {
+          this.update();
+          this.draw();
+        }, 100);
+      }
+    }
+    
+    const game = new GameOfLife(50, 50, 10); // Adjust width, height, and cellSize as needed
+    game.draw();
+
+    function startGame() {
+      intervalId = setInterval(() => {
+        game.update();
+        game.draw();
+        getherStats()
+      }, 100);
+    }
+    
+    function pauseGame() {
+      clearInterval(intervalId);
+    }
+
+    function getherStats() {
+      Cells = 0;
+      Living_Cells = 0;
+      Dead_Cells = 0;
+      Average_Health = 0;
+      Foods = 0;
+      Heaths = [];
+      Amounts = [];
+      for (let y = 0; y < game.height; y++) {
+        for (let x = 0; x < game.width; x++) {
+          if (game.grid[y][x] instanceof FoodCell) {
+            Amounts.push(game.grid[y][x].amount)
+          }
+          if (game.grid[y][x] instanceof Cell) {
+            Cells += 1
+            Living_Cells += 1 * game.grid[y][x].alive
+            Heaths.push(game.grid[y][x].health)
+          }
+        }
+      }
+      Dead_Cells = Cells - Living_Cells
+      Foods = Amounts.reduce((partialSum, a) => partialSum + a, 0);
+      Sum_Health = Heaths.reduce((partialSum, a) => partialSum + a, 0)
+
+      document.getElementById("living").innerHTML = Living_Cells
+      document.getElementById("dead").innerHTML = Dead_Cells
+      document.getElementById("food").innerHTML = Foods
+      document.getElementById("avg_health").innerHTML = Sum_Health / Living_Cells
+    }
+    
+    function iterateOnce() {
+      game.update();
+      game.draw();
+    }
+    
+    function clearGrid() {
+      let grid = [];
+        for (let y = 0; y < game.height; y++) {
+          grid[y] = [];
+          for (let x = 0; x < game.width; x++) {
+            grid[y][x] = new Cell(x, y, 0, 0);
+          }
+        }
+      game.grid = grid;
+      game.draw();
+    }
+
+
+  </script>
+</body>
+</html>
